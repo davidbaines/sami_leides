@@ -1,172 +1,69 @@
 # Introduction
-FAIR Sequence-to-Sequence Toolkit (PyTorch)
 
-This is a PyTorch version of [fairseq](https://github.com/facebookresearch/fairseq), a sequence-to-sequence learning toolkit from Facebook AI Research. The original authors of this reimplementation are (in no particular order) Sergey Edunov, Myle Ott, and Sam Gross. The toolkit implements the fully convolutional model described in [Convolutional Sequence to Sequence Learning](https://arxiv.org/abs/1705.03122) and features multi-GPU training on a single machine as well as fast beam search generation on both CPU and GPU. We provide pre-trained models for English to French and English to German translation.
+This is the code for the article [Machine translating the Bible into new languages](https://samiliedes.wordpress.com/2018/03/07/machine-translating-the-bible-into-new-languages/).
 
-![Model](fairseq.gif)
+The preprocessing step requires a slightly modified version of the Moses tokenizer. This and another dependency are thus included as Git submodules. For this reason, you need to also clone the subrepositories. The easiest way to do this is to use this command to clone the repository:
 
-# Citation
+`git clone --recurse-submodules https://github.com/sliedes/fairseq-py`
 
-If you use the code in your paper, then please cite it as:
+Install PyTorch >= 0.3.0 either from source or from [http://pytorch.org/](http://pytorch.org/).
+
+Build the C extensions for Fairseq and install:
 
 ```
-@inproceedings{gehring2017convs2s,
-  author    = {Gehring, Jonas, and Auli, Michael and Grangier, David and Yarats, Denis and Dauphin, Yann N},
-  title     = "{Convolutional Sequence to Sequence Learning}",
-  booktitle = {Proc. of ICML},
-  year      = 2017,
-}
+$ pip install -r requirements.txt
+$ CFLAGS=-I/opt/cuda/include python setup.py build
+$ python setup.py develop
 ```
 
-# Requirements and Installation
-* A computer running macOS or Linux
-* For training new models, you'll also need a NVIDIA GPU and [NCCL](https://github.com/NVIDIA/nccl)
-* Python version 3.6
-* A [PyTorch installation](http://pytorch.org/)
+To prepare the data set:
 
-Currently fairseq-py requires PyTorch version >= 0.3.0.
-Please follow the instructions here: https://github.com/pytorch/pytorch#installation.
+1. Install the SWORD project's tools on your computer. For example, for Debian derivative distributions they are available in a package named *libsword-utils*.
+1. Install the Bible modules you want to include in the corpus. You can do this using the *installmgr* command line tool, or from a Bible software package such as BibleTime.
+1. Edit `data/prepare_bible.py` to list the modules in the MODULES variable. Those prefixed with an asterisk will be romanized. Also set the attention language (variable SRC), and edit TRAIN_STARTS to exclude portions of some translations from training and use them as the validation/test set.
 
-If you use Docker make sure to increase the shared memory size either with `--ipc=host` or `--shm-size` as command line
-options to `nvidia-docker run`.
+Now run the following commands:
 
-After PyTorch is installed, you can install fairseq-py with:
 ```
-pip install -r requirements.txt
-python setup.py build
-python setup.py develop
-```
-
-# Quick Start
-
-The following command-line tools are available:
-* `python preprocess.py`: Data pre-processing: build vocabularies and binarize training data
-* `python train.py`: Train a new model on one or multiple GPUs
-* `python generate.py`: Translate pre-processed data with a trained model
-* `python interactive.py`: Translate raw text with a trained model
-* `python score.py`: BLEU scoring of generated translations against reference translations
-
-## Evaluating Pre-trained Models
-First, download a pre-trained model along with its vocabularies:
-```
-$ curl https://s3.amazonaws.com/fairseq-py/models/wmt14.v2.en-fr.fconv-py.tar.bz2 | tar xvjf -
-```
-
-This model uses a [Byte Pair Encoding (BPE) vocabulary](https://arxiv.org/abs/1508.07909), so we'll have to apply the encoding to the source text before it can be translated.
-This can be done with the [apply_bpe.py](https://github.com/rsennrich/subword-nmt/blob/master/apply_bpe.py) script using the `wmt14.en-fr.fconv-cuda/bpecodes` file.
-`@@` is used as a continuation marker and the original text can be easily recovered with e.g. `sed s/@@ //g` or by passing the `--remove-bpe` flag to `generate.py`.
-Prior to BPE, input text needs to be tokenized using `tokenizer.perl` from [mosesdecoder](https://github.com/moses-smt/mosesdecoder).
-
-Let's use `python interactive.py` to generate translations interactively.
-Here, we use a beam size of 5:
-```
-$ MODEL_DIR=wmt14.en-fr.fconv-py
-$ python interactive.py \
- --path $MODEL_DIR/model.pt $MODEL_DIR \
- --beam 5
-| loading model(s) from wmt14.en-fr.fconv-py/model.pt
-| [en] dictionary: 44206 types
-| [fr] dictionary: 44463 types
-| Type the input sentence and press return:
-> Why is it rare to discover new marine mam@@ mal species ?
-O       Why is it rare to discover new marine mam@@ mal species ?
-H       -0.06429661810398102    Pourquoi est-il rare de découvrir de nouvelles espèces de mammifères marins ?
-A       0 1 3 3 5 6 6 8 8 8 7 11 12
-```
-
-This generation script produces four types of outputs: a line prefixed with *S* shows the supplied source sentence after applying the vocabulary; *O* is a copy of the original source sentence; *H* is the hypothesis along with an average log-likelihood; and *A* is the attention maxima for each word in the hypothesis, including the end-of-sentence marker which is omitted from the text.
-
-Check [below](#pre-trained-models) for a full list of pre-trained models available.
-
-
-## Training a New Model
-
-### Data Pre-processing
-The fairseq-py source distribution contains an example pre-processing script for
-the IWSLT 2014 German-English corpus.
-Pre-process and binarize the data as follows:
-```
-$ cd data/
-$ bash prepare-iwslt14.sh
+$ cd data
+$ ./prepare_bible.py
 $ cd ..
-$ TEXT=data/iwslt14.tokenized.de-en
-$ python preprocess.py --source-lang de --target-lang en \
-  --trainpref $TEXT/train --validpref $TEXT/valid --testpref $TEXT/test \
-  --destdir data-bin/iwslt14.tokenized.de-en
-```
-This will write binarized data that can be used for model training to `data-bin/iwslt14.tokenized.de-en`.
-
-### Training
-Use `python train.py` to train a new model.
-Here a few example settings that work well for the IWSLT 2014 dataset:
-```
-$ mkdir -p checkpoints/fconv
-$ CUDA_VISIBLE_DEVICES=0 python train.py data-bin/iwslt14.tokenized.de-en \
-  --lr 0.25 --clip-norm 0.1 --dropout 0.2 --max-tokens 4000 \
-  --arch fconv_iwslt_de_en --save-dir checkpoints/fconv
+$ python preprocess.py --source-lang src --target-lang tgt \
+  --trainpref data/bible.prep/train --validpref data/bible.prep/valid \
+  --testpref data/bible.prep/test --destdir data-bin/bible.prep
 ```
 
-By default, `python train.py` will use all available GPUs on your machine.
-Use the [CUDA_VISIBLE_DEVICES](http://acceleware.com/blog/cudavisibledevices-masking-gpus) environment variable to select specific GPUs and/or to change the number of GPU devices that will be used.
+Now you will have a binarized dataset in data-bin/bible.prep. You can use `train.py` to train a model:
 
-Also note that the batch size is specified in terms of the maximum number of tokens per batch (`--max-tokens`).
-You may need to use a smaller value depending on the available GPU memory on your system.
-
-### Generation
-Once your model is trained, you can generate translations using `python generate.py` **(for binarized data)** or `python interactive.py` **(for raw text)**:
 ```
-$ python generate.py data-bin/iwslt14.tokenized.de-en \
-  --path checkpoints/fconv/checkpoint_best.pt \
-  --batch-size 128 --beam 5
-  | [de] dictionary: 35475 types
-  | [en] dictionary: 24739 types
-  | data-bin/iwslt14.tokenized.de-en test 6750 examples
-  | model fconv
-  | loaded checkpoint trainings/fconv/checkpoint_best.pt
-  S-721   danke .
-  T-721   thank you .
-  ...
+$ mkdir -p checkpoints/bible.prep
+$ CUDA_VISIBLE_DEVICES=0 python train.py data-bin/bible.prep \
+  --lr 0.25 --clip-norm 0.1 --dropout 0.2 --max-tokens 3000 \
+  --arch fconv_wmt_en_ro --save-dir checkpoints/bible.prep
 ```
 
-To generate translations with only a CPU, use the `--cpu` flag.
-BPE continuation markers can be removed with the `--remove-bpe` flag.
+Adjust the --max-tokens value if you run out of GPU memory.
 
-# Pre-trained Models
+You can generate translations of the test/validation set with with generate.py:
 
-We provide the following pre-trained fully convolutional sequence-to-sequence models:
-
-* [wmt14.en-fr.fconv-py.tar.bz2](https://s3.amazonaws.com/fairseq-py/models/wmt14.v2.en-fr.fconv-py.tar.bz2): Pre-trained model for [WMT14 English-French](http://statmt.org/wmt14/translation-task.html#Download) including vocabularies
-* [wmt14.en-de.fconv-py.tar.bz2](https://s3.amazonaws.com/fairseq-py/models/wmt14.v2.en-de.fconv-py.tar.bz2): Pre-trained model for [WMT14 English-German](https://nlp.stanford.edu/projects/nmt) including vocabularies
-
-In addition, we provide pre-processed and binarized test sets for the models above:
-* [wmt14.en-fr.newstest2014.tar.bz2](https://s3.amazonaws.com/fairseq-py/data/wmt14.v2.en-fr.newstest2014.tar.bz2): newstest2014 test set for WMT14 English-French
-* [wmt14.en-fr.ntst1213.tar.bz2](https://s3.amazonaws.com/fairseq-py/data/wmt14.v2.en-fr.ntst1213.tar.bz2): newstest2012 and newstest2013 test sets for WMT14 English-French
-* [wmt14.en-de.newstest2014.tar.bz2](https://s3.amazonaws.com/fairseq-py/data/wmt14.v2.en-de.newstest2014.tar.bz2): newstest2014 test set for WMT14 English-German
-
-Generation with the binarized test sets can be run in batch mode as follows, e.g. for English-French on a GTX-1080ti:
 ```
-$ curl https://s3.amazonaws.com/fairseq-py/models/wmt14.v2.en-fr.fconv-py.tar.bz2 | tar xvjf - -C data-bin
-$ curl https://s3.amazonaws.com/fairseq-py/data/wmt14.v2.en-fr.newstest2014.tar.bz2 | tar xvjf - -C data-bin
-$ python generate.py data-bin/wmt14.en-fr.newstest2014  \
-  --path data-bin/wmt14.en-fr.fconv-py/model.pt \
-  --beam 5 --batch-size 128 --remove-bpe | tee /tmp/gen.out
-...
-| Translated 3003 sentences (96311 tokens) in 166.0s (580.04 tokens/s)
-| Generate test with beam=5: BLEU4 = 40.83, 67.5/46.9/34.4/25.5 (BP=1.000, ratio=1.006, syslen=83262, reflen=82787)
-
-# Scoring with score.py:
-$ grep ^H /tmp/gen.out | cut -f3- > /tmp/gen.out.sys
-$ grep ^T /tmp/gen.out | cut -f2- > /tmp/gen.out.ref
-$ python score.py --sys /tmp/gen.out.sys --ref /tmp/gen.out.ref
-BLEU4 = 40.83, 67.5/46.9/34.4/25.5 (BP=1.000, ratio=1.006, syslen=83262, reflen=82787)
+$ python generate.py data-bin/bible.prep --path checkpoints/bible.prep/checkpoint_best.pt \
+  --batch-size 10 --beam 120 --remove-bpe
 ```
 
-# Join the fairseq community
+To generate full translations, use the generated template in `data/bible.prep/src-template`. For each line, replace the `TGT_TEMPLATE` tag by one that corresponds to a translation; for example, `TGT_ESV2011` for English or `TGT_FinPR` for Finnish:
 
-* Facebook page: https://www.facebook.com/groups/fairseq.users
-* Google group: https://groups.google.com/forum/#!forum/fairseq-users
+`$ sed -e s/TGT_TEMPLATE/TGT_FinPR/ <data/bible.prep/src-template >src.FinPR`
 
-# License
-fairseq-py is BSD-licensed.
-The license applies to the pre-trained models as well.
-We also provide an additional patent grant.
+Now you can edit src.FinPR to omit the verses you do not want translated. After that, to translate:
+
+```
+$ ./batch_translate.py --model checkpoints/bible.prep/checkpoint_best.pt \
+  --dictdir data-bin/bible.prep --beam 120 --batch-size 10 src.FinPR >FinPR.raw.txt
+```
+
+The output file has the translated sentences in length order. To sort them in the order of the source text, add verse names and apply some minor postprocessing, use `sort_full.py` (you may need to edit it to change the source module):
+
+`$ ./sort_full.py <FinPR.raw.txt >FinPR.txt`
+
+For more useful information in the original README for fairseq-py, consult [README.fairseq.md](README.fairseq.md).
