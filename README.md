@@ -17,7 +17,7 @@ The preprocessing step requires a slightly modified version of the Moses tokeniz
 
 You need `Python.h`, this is installed on Ubuntu with
 ``` bash
-$ sudo apt install python3-dev
+sudo apt install python3-dev
 ```
 
 Install PyTorch either from source or from [http://pytorch.org/](http://pytorch.org/).
@@ -25,7 +25,7 @@ Install PyTorch either from source or from [http://pytorch.org/](http://pytorch.
 Install Fairseq:
 
 ``` bash
-$ pip install --editable ./
+pip install --editable ./
 ```
 
 To prepare the data set:
@@ -52,8 +52,8 @@ $ python ./fairseq_cli/preprocess.py --source-lang src --target-lang tgt \
 Now you will have a binarized dataset in data-bin/bible.prep. You can use `train.py` to train a model:
 
 ``` bash
-$ mkdir -p checkpoints/bible.prep
-$ CUDA_VISIBLE_DEVICES=0 python train.py data-bin/bible.prep \
+mkdir -p checkpoints/bible.prep
+CUDA_VISIBLE_DEVICES=0 python train.py data-bin/bible.prep \
   --optimizer adam --lr 0.0001 --clip-norm 0.1 --dropout 0.4 --max-tokens 3000 \
   --arch fconv_wmt_en_ro --save-dir checkpoints/bible.prep \
   --tensorboard-logdir tb_logs/bible.prep
@@ -64,7 +64,7 @@ Adjust the --max-tokens value if you run out of GPU memory.
 You can generate translations of the test/validation set with with generate.py:
 
 ```
-$ python ./fairseq_cli/generate.py data-bin/bible.prep --path checkpoints/bible.prep/checkpoint_best.pt \
+python ./fairseq_cli/generate.py data-bin/bible.prep --path checkpoints/bible.prep/checkpoint_best.pt \
   --batch-size 10 --beam 120 --remove-bpe
 ```
 
@@ -108,12 +108,12 @@ The following instructions use batch_translate.py which has had code entropy bec
 
 To generate full translations, use the generated template in `data/bible.prep/src-template`. For each line, replace the `TGT_TEMPLATE` tag by one that corresponds to a translation; for example, `TGT_NETfree` for English or `TGT_FinPR` for Finnish:
 
-`$ sed -e s/TGT_TEMPLATE/TGT_FinPR/ <data/bible.prep/src-template >src.FinPR`
+`sed -e s/TGT_TEMPLATE/TGT_FinPR/ <data/bible.prep/src-template >src.FinPR`
 
 Now you can edit src.FinPR to omit the verses you do not want translated. After that, to translate:
 
 ```
-$ ./batch_translate.py --model checkpoints/bible.prep/checkpoint_best.pt \
+./batch_translate.py --model checkpoints/bible.prep/checkpoint_best.pt \
   --dictdir data-bin/bible.prep --beam 120 --batch-size 10 src.FinPR >FinPR.raw.txt
 ```
 
